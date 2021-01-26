@@ -1,0 +1,135 @@
+#!/usr/bin/python
+#usage: download genomes from ncbi database
+
+import glob
+from ftplib import FTP
+import os
+import sys
+
+# ------------------- 类和函数定义 -----------------------
+class MyPathes:
+    '''定义类储存当前路径，当前路径下的文件名，当前路径下的文件夹名'''
+
+    def __init__(self, cur_path, ftp):
+        self.cur = cur_path #当前路径
+        self.ftp = ftp # 连接的FTP
+        self.folders = [] # 解析出当前路径下的文件夹
+        self.files = [] # 解析出当前路径下的文件
+        self.nextPathes = [] # 生成下一步的路径
+        self.links = [] # 解析出当前路径下的超链接
+
+        self.content = self.getContet() # 初始化的时候从服务器上获得路径下的内容
+        self.sort() # 对获得的内容分类：文件夹，文件，超链接
+        self.createPathes() # 生成下一步的路径，也就是如何去包含的文件夹
+
+    def getContet(self):
+        dir_content = []
+        self.ftp.cwd(self.cur)
+        self.ftp.retrlines('LIST', callback = dir_content.append)
+        return dir_content
+
+    def sort(self):
+        for line in self.content:
+            if line.startswith('d'):
+                self.folders.append(line.split(" ")[-1])
+            elif line.startswith('l'):
+                self.links.append(line.split(" ")[-1])
+            else:
+                self.files.append(line.split(" ")[-1])
+
+    def oneDes(self):
+        return(len(self.folders) == 1)
+
+
+    def createPathes(self):
+        for folder in self.folders:
+            self.nextPathes.append(self.cur + '/' + folder)
+        return(self.nextPathes)
+
+# -------------------------函数 -----------------------------
+# 转换accession no. 为路径
+def acc2path(acc):
+    root = '/genomes/all/GCA/'
+    acc = acc.split('_')[1]
+    acc = acc.split('.')[0]
+    path = root + acc[0:3] + '/' + acc[3:6] + '/' + acc[6:9]
+    return path
+
+# 连接FTP
+def con():
+    ftp = FTP()
+    ftp.connect("ftp.ncbi.nlm.nih.gov", 21)
+    ftp.login()#连接的用户名，密码
+    return(ftp)
+
+# 下载文件
+def downloadFile(filename):
+    try:
+        ftp.retrbinary("RETR " + filename, open(filename, 'wb').write)
+    except FileExistsError:
+        pass
+
+# 下载文件夹
+def downloadFolder(dir_folder):
+    try:
+        os.mkdir(dir_folder)
+    except FileExistsError:
+        print('File existed')
+    os.chdir(dir_folder)
+
+#----------------------------定义完成----------------------
+
+# 获得GenBank No.
+# 存在同文件夹中，唯一的txt文件中
+file = glob.glob('*.txt')
+print(file)
+accessions = open(file[0], 'r').readlines()
+accessions =accessions.replace('\n','')[:-1]
+print(accessions)
+
+
+# 逐个基因组下载，适用于文件夹中不包括其他文件夹
+for acc in accessions:
+    os.chdir('E://')
+
+    # 将No解析为路径
+    root = acc2path(acc)
+    print(root)
+
+
+    # 连接FTP
+    ftp = con()
+
+    # 解析当前路径的内容
+    x1 = MyPathes(root, ftp)
+
+    # 进入要下载的文件夹
+    # 如果不只一个文件夹，说明有不同注释的版本，提醒
+    if not x1.oneDes():
+        print("More than one version available!")
+
+    else:
+        # 连接FTP
+        ftp = con()
+
+        # 建立本地文件夹
+        downloadFolder(x1.folders[0])
+
+        # 进入下一级ftp目录，这里包含实际的序列和注释文件
+        x2 = MyPathes(x1.nextPathes[0], ftp)
+
+        # 开始下载
+        print('start!')
+        prog = len(x2.files)
+        for file in x2.files:
+            downloadFile(file)
+            sys.stdout.write("%i=" % (prog))
+            sys.stdout.flush()
+            prog = prog-1
+
+       # 判断是不是还有包含的文件夹需要下载
+#       if not x2.nextPathes:
+#            print('Done')
+#       else:
+#            print('Must go deeper')
+#
